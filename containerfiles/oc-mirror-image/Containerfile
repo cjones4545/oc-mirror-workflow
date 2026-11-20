@@ -1,0 +1,7 @@
+FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
+
+COPY oc-mirror /usr/local/bin/oc-mirror
+
+RUN chmod 755 /usr/local/bin/oc-mirror
+
+ENTRYPOINT ["/usr/local/bin/oc-mirror", "--v2"]

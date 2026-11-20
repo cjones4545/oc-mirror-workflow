@@ -63,8 +63,8 @@ gather_info() {
 }
 
 pull_operators() {
-    # pull_oc
-    # gather_info
+    pull_oc
+    gather_info
     AUTHFILE=$(pwd)/pull-secret.txt
     IMAGESETS=$(pwd)/imagesets
     [[ ! -f "${AUTHFILE}" ]] && {

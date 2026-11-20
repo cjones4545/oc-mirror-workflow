@@ -1,6 +1,8 @@
 #!/bin/bash 
 set -eou pipefail
 
+IMAGE="localhost/oc-mirror:test"
+
 pull_oc() {
     local REGISTRY
     local USERNAME
@@ -12,8 +14,6 @@ pull_oc() {
     echo "Installing podman on the WSL Image..."
     sudo apt upgrade -y 
     sudo apt install -y podman 
-
-    IMAGE="localhost/oc-mirror:test"
 
     echo "Logging into Gitlab instance..."
     read -p "Enter the Gitlab container registry URL (registry.example.com:443): " REGISTRY
@@ -56,7 +56,7 @@ gather_info() {
     fi 
     echo 
     echo "Using:"
-    echo " Drive Letter  : ${DRIVE}"
+    echo " Drive Path  : ${DRIVE}"
     echo " Base Dir      : ${BASEDIR}"
     echo " Working Dir   : ${WORKDIR}"
     echo " Cache Dir     : ${CACHEDIR}"

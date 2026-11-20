@@ -14,7 +14,7 @@
 2. Make sure to have the drive plugged into your device
 3. Download your pull-secret from console.redhat.com 
     - Navigate to https://console.redhat.com/openshift/downloads and at the bottom of the page you'll see a download button for the pull secret
-    ![alt text](<Screenshot From 2026-11-20 17-07-32.png>)
+    [![pull-secret](images/pullsecretdownload.png)
 4. Install WSL on your Windows Laptop through software center 
 5. Open a command prompt and type ```wsl```
 6. Clone down this repo to the WSL image ```git clone <repo>.git```

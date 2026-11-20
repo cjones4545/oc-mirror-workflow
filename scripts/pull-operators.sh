@@ -86,3 +86,5 @@ pull_operators() {
 }
 
 pull_operators
+
+echo "Mirror to disk is complete --- Please make sure that you move the mirror tar off of the drive and into the environment"

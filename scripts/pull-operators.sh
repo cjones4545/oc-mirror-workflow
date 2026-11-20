@@ -74,14 +74,14 @@ pull_operators() {
         exit 1
     }
     podman run --rm -it \
-      -v "${CACHEDIR}:/cache" \
-      -v "${WORKDIR}:/work" \
-      -v "${IMAGESETS}:/imagesets:ro" \
-      -v "${AUTHFILE}:/pull-secret.txt:ro" \
+      -v "${CACHEDIR}:/cache:Z" \
+      -v "${WORKDIR}:/work:Z" \
+      -v "${IMAGESETS}:/imagesets:Z" \
+      -v "${AUTHFILE}:/pull-secret.txt:Z" \
       "$IMAGE" \
       --authfile /pull-secret.txt \
       --cache-dir /cache \
-      -c original-isc.yml \
+      -c imagesets/original-isc.yml \
       file://${WORKDIR}
 }
 

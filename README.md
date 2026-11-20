@@ -9,7 +9,7 @@
     - /mnt/oc-mirror/output
     - /mnt/oc-mirror/cache
 
-### Setup
+### Setup and workflow
 1. Ensure you have requested Removale Media Access for your device 
 2. Make sure to have the drive plugged into your device
 3. Download your pull-secret from console.redhat.com 
@@ -21,3 +21,4 @@
 7. Change directories to the cloned project
 8. Place your downloaded pull-secret in the cloned project directory (preserve the pull-secret.txt name) 
 9. Run the scripts/pull-operators.sh script ```bash pull-operators.sh``` and follow the prompts 
+10. Transfer the mirror tar to the airgapped environment 

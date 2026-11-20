@@ -80,7 +80,7 @@ pull_operators() {
       -v "${AUTHFILE}:/pull-secret.txt:ro" \
       "$IMAGE" \
       --authfile /pull-secret.txt \
-      --cachedir /cache \
+      --cache-dir /cache \
       -c original-isc.yml \
       file://${WORKDIR}
 }

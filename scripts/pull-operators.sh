@@ -47,10 +47,16 @@ gather_info() {
 pull_operators() {
     AUTHFILE=$(pwd)/pull-secret.txt
     IMAGESETS=$(pwd)/imagesets
+    IMAGESET_CONFIG="${IMAGESETS}/original-isc.yml"
     [[ ! -f "${AUTHFILE}" ]] && {
         echo "ERROR: Pull secret not found:"
         echo "  ${AUTHFILE}"
         echo "  make sure you are in the project roots directory"
+        exit 1
+    }
+    [[ ! -f "${IMAGESET_CONFIG}" ]] && {
+        echo "ERROR: Image set configuration not found:"
+        echo "  ${IMAGESET_CONFIG}"
         exit 1
     }
     podman run --rm -it \
@@ -63,6 +69,9 @@ pull_operators() {
       --cache-dir /cache \
       -c /imagesets/original-isc.yml \
       file:///work
+
+    cp -- "${IMAGESET_CONFIG}" "${WORKDIR}/imageset-config.yml"
+    sha256sum -- "${WORKDIR}/imageset-config.yml" | cut -d ' ' -f 1 > "${WORKDIR}/imageset-config.yml.sha256"
 }
 
 main() {

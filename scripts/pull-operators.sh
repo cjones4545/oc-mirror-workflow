@@ -1,7 +1,7 @@
 #!/bin/bash 
 set -eou pipefail
 
-readonly IMAGE="${OC_MIRROR_IMAGE:-localhost/oc-mirror:test}"
+readonly IMAGE="${OC_MIRROR_IMAGE:-quay.io/rhn-support-carjones/oc-mirror:latest}"
 
 pull_oc() {
     local REGISTRY
@@ -12,32 +12,14 @@ pull_oc() {
     echo "#############################"
     echo 
     echo "Installing podman on the WSL Image..."
-    sudo apt upgrade -y 
+    sudo apt update -y 
     sudo apt install -y podman 
-
-    echo "Logging into Gitlab instance..."
-    read -p "Enter the Gitlab container registry URL (registry.example.com:443): " REGISTRY
-    read -p "Enter your Gitlab Username (N number): " USERNAME
-    read -sp "Enter your Gitlab Password: " PASSWORD
     echo
-
-    if ! printf '%s' "$PASSWORD" | podman login \
-        "$REGISTRY" \
-        --username "$USERNAME" \
-        --password-stdin 
-    then 
-        echo "Error: Login failed for $REGISTRY"
-        unset PASSWORD
-        exit 1
-    fi 
-
-    unset PASSWORD 
-
     echo "Pulling $IMAGE"
     podman pull $IMAGE
     echo
-
-    echo "Environment all setup"
+    echo "Image pulled and continuing..."
+    echo
 }
 
 gather_info() {
@@ -72,17 +54,23 @@ pull_operators() {
         exit 1
     }
     podman run --rm -it \
-      -v "${CACHEDIR}:/cache:Z" \
-      -v "${WORKDIR}:/work:Z" \
-      -v "${IMAGESETS}:/imagesets:Z" \
-      -v "${AUTHFILE}:/pull-secret.txt:Z" \
+      -v "${CACHEDIR}:/cache" \
+      -v "${WORKDIR}:/work" \
+      -v "${IMAGESETS}:/imagesets" \
+      -v "${AUTHFILE}:/pull-secret.txt" \
       "$IMAGE" \
       --authfile /pull-secret.txt \
       --cache-dir /cache \
-      -c imagesets/original-isc.yml \
-      file://${WORKDIR}
+      -c /imagesets/original-isc.yml \
+      file:///work
 }
 
-pull_operators
+main() {
+    pull_oc
+    gather_info
+    pull_operators
+}
+
+main "$@"
 
 echo "Mirror to disk is complete --- Please make sure that you move the mirror tar off of the drive and into the environment"

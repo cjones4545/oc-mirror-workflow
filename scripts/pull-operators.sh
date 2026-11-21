@@ -1,7 +1,7 @@
 #!/bin/bash 
 set -eou pipefail
 
-IMAGE="localhost/oc-mirror:test"
+readonly IMAGE="${OC_MIRROR_IMAGE:-localhost/oc-mirror:test}"
 
 pull_oc() {
     local REGISTRY
@@ -63,8 +63,6 @@ gather_info() {
 }
 
 pull_operators() {
-    pull_oc
-    gather_info
     AUTHFILE=$(pwd)/pull-secret.txt
     IMAGESETS=$(pwd)/imagesets
     [[ ! -f "${AUTHFILE}" ]] && {
@@ -81,7 +79,7 @@ pull_operators() {
       "$IMAGE" \
       --authfile /pull-secret.txt \
       --cache-dir /cache \
-      -c /imagesets/original-isc.yml \
+      -c imagesets/original-isc.yml \
       file://${WORKDIR}
 }
 

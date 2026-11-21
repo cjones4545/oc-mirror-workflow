@@ -4,25 +4,14 @@ set -eou pipefail
 readonly IMAGE="${OC_MIRROR_IMAGE:-quay.io/rhn-support-carjones/oc-mirror:latest}"
 INSTALL_PLATFORM=auto
 
-run_with_privileges() {
-    if (( EUID == 0 )); then
-        "$@"
-    elif command -v sudo >/dev/null 2>&1; then
-        sudo "$@"
-    else
-        echo "ERROR: Root privileges are required to install podman; run as root or install sudo."
-        return 1
-    fi
-}
-
 install_podman() {
     echo "Installing podman on this host..."
     case "$INSTALL_PLATFORM" in
         rhel)
             if command -v dnf >/dev/null 2>&1; then
-                run_with_privileges dnf install -y podman
+                sudo dnf install -y podman
             elif command -v yum >/dev/null 2>&1; then
-                run_with_privileges yum install -y podman
+                sudo yum install -y podman
             else
                 echo "ERROR: --rhel was specified, but neither dnf nor yum is available."
                 exit 1
@@ -33,17 +22,17 @@ install_podman() {
                 echo "ERROR: --wsl was specified, but apt-get is not available."
                 exit 1
             fi
-            run_with_privileges apt-get update
-            run_with_privileges apt-get install -y podman
+            sudo apt-get update
+            sudo apt-get install -y podman
             ;;
         auto)
             if command -v dnf >/dev/null 2>&1; then
-                run_with_privileges dnf install -y podman
+                sudo dnf install -y podman
             elif command -v yum >/dev/null 2>&1; then
-                run_with_privileges yum install -y podman
+                sudo yum install -y podman
             elif command -v apt-get >/dev/null 2>&1; then
-                run_with_privileges apt-get update
-                run_with_privileges apt-get install -y podman
+                sudo apt-get update
+                sudo apt-get install -y podman
             else
                 echo "ERROR: Cannot install podman: no supported package manager (dnf, yum, or apt-get) was found."
                 exit 1

@@ -1,15 +1,28 @@
 #!/bin/bash
 set -euo pipefail
 
-readonly PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-readonly AUTHFILE="${OC_MIRROR_AUTHFILE:-${PROJECT_ROOT}/pull-secret.txt}"
 readonly CONFIG_NAME="imageset-config.yml"
 PUSH_COMPLETED=false
+
+run_with_privileges() {
+    if (( EUID == 0 )); then
+        "$@"
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo "$@"
+    else
+        echo "ERROR: Root privileges are required to save artifacts under /opt; run as root or install sudo."
+        return 1
+    fi
+}
 
 check_oc_mirror() {
     if ! command -v oc-mirror >/dev/null 2>&1; then
         echo "ERROR: oc-mirror was not found in PATH."
         echo "Install or configure the oc-mirror CLI on this host, then try again."
+        exit 1
+    fi
+    if ! command -v podman >/dev/null 2>&1; then
+        echo "ERROR: podman is required to log in to the destination registry."
         exit 1
     fi
 }
@@ -108,20 +121,19 @@ gather_info() {
 }
 
 push_operators() {
-    local REGISTRY CONFIRM DRY_RUN_DIR CLUSTER_RESOURCES
-    if [[ ! -r "$AUTHFILE" ]]; then
-        echo "ERROR: Registry auth file not found or unreadable:"
-        echo "  ${AUTHFILE}"
-        echo "Set OC_MIRROR_AUTHFILE to the path of an auth file with credentials for the destination registry."
-        exit 1
-    fi
+    local REGISTRY REGISTRY_HOST CONFIRM DRY_RUN_DIR CLUSTER_RESOURCES
 
     read -r -p "Enter the destination registry (example: registry.example.com:5000): " REGISTRY
     REGISTRY="${REGISTRY#docker://}"
-    if [[ -z "$REGISTRY" || "$REGISTRY" == *"://"* ]]; then
+    if [[ -z "$REGISTRY" || "$REGISTRY" == *"://"* || "$REGISTRY" =~ [[:space:]] ]]; then
         echo "ERROR: Enter a registry host, optionally followed by a namespace, without a URL scheme."
         exit 1
     fi
+
+    REGISTRY_HOST="${REGISTRY%%/*}"
+    echo
+    echo "Log in to ${REGISTRY_HOST}; Podman will prompt for credentials without exposing the password in the command."
+    podman login "$REGISTRY_HOST"
 
     echo
     echo "Previewing the disk-to-registry operation (no images will be pushed)..."
@@ -131,7 +143,6 @@ push_operators() {
       --dry-run \
       --from "file://${WORKDIR}" \
       "docker://${REGISTRY}" \
-      --authfile "$AUTHFILE" \
       || {
           echo "ERROR: oc-mirror dry run failed. No images were pushed."
           exit 1
@@ -166,14 +177,19 @@ push_operators() {
         return
     fi
 
+    if [[ ! -d /opt ]] || ! run_with_privileges test -w /opt; then
+        echo "ERROR: The artifact destination /opt is unavailable or not writable."
+        echo "No images were pushed."
+        exit 1
+    fi
+
     echo
     echo "Pushing images to docker://${REGISTRY}..."
     oc-mirror \
       --v2 \
       -c "$CONFIG_FILE" \
       --from "file://${WORKDIR}" \
-      "docker://${REGISTRY}" \
-      --authfile "$AUTHFILE"
+      "docker://${REGISTRY}"
     PUSH_COMPLETED=true
 
     echo
@@ -185,6 +201,80 @@ push_operators() {
     else
         echo "  No cluster-resources directory was generated."
     fi
+
+    save_artifacts "$REGISTRY" "$CLUSTER_RESOURCES"
+}
+
+save_artifacts() {
+    local REGISTRY="$1" CLUSTER_RESOURCES="$2"
+    local TIMESTAMP ARTIFACT_ROOT ARTIFACT_DIR TARBALL_NAME
+    local TARBALL_SHA256 TARBALL_SIZE AVAILABLE_BYTES SPACE_RESERVE_BYTES
+    local TARBALL_INCLUDED=false DEST_TARBALL PARTIAL_TARBALL COPIED_SHA256
+
+    TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+    ARTIFACT_ROOT=/opt/oc-mirror-artifacts
+    ARTIFACT_DIR="${ARTIFACT_ROOT}/${TIMESTAMP}"
+    if [[ -e "$ARTIFACT_DIR" ]]; then
+        ARTIFACT_DIR="${ARTIFACT_DIR}-$$"
+    fi
+    run_with_privileges install -d -m 0755 -- "$ARTIFACT_ROOT"
+    run_with_privileges mkdir -m 0755 -- "$ARTIFACT_DIR"
+
+    TARBALL_NAME="$(basename -- "$TARBALL")"
+    TARBALL_SIZE="$(stat -c '%s' -- "$TARBALL")"
+    TARBALL_SHA256="$(sha256sum -- "$TARBALL")"
+    TARBALL_SHA256="${TARBALL_SHA256%% *}"
+
+    run_with_privileges install -m 0644 -- "$CONFIG_FILE" "${ARTIFACT_DIR}/${CONFIG_NAME}"
+    run_with_privileges install -m 0644 -- "$CONFIG_CHECKSUM" "${ARTIFACT_DIR}/${CONFIG_NAME}.sha256"
+    run_with_privileges install -m 0644 -- \
+      "${WORKDIR}/working-dir/dry-run/mapping.txt" \
+      "${ARTIFACT_DIR}/image-mapping.txt"
+    if [[ -d "$CLUSTER_RESOURCES" ]]; then
+        run_with_privileges cp -a -- "$CLUSTER_RESOURCES" "${ARTIFACT_DIR}/cluster-resources"
+    fi
+
+    AVAILABLE_BYTES="$(df -Pk "$ARTIFACT_ROOT" | awk 'NR == 2 {print $4 * 1024}')"
+    if [[ ! "$AVAILABLE_BYTES" =~ ^[0-9]+$ ]]; then
+        echo "ERROR: Could not determine free space under ${ARTIFACT_ROOT}."
+        exit 1
+    fi
+    SPACE_RESERVE_BYTES=1073741824
+    if (( AVAILABLE_BYTES >= TARBALL_SIZE + SPACE_RESERVE_BYTES )); then
+        DEST_TARBALL="${ARTIFACT_DIR}/${TARBALL_NAME}"
+        PARTIAL_TARBALL="${DEST_TARBALL}.partial"
+        echo "Archiving mirror tar to ${DEST_TARBALL}..."
+        run_with_privileges install -m 0644 -- "$TARBALL" "$PARTIAL_TARBALL"
+        COPIED_SHA256="$(run_with_privileges sha256sum -- "$PARTIAL_TARBALL")"
+        COPIED_SHA256="${COPIED_SHA256%% *}"
+        if [[ "$COPIED_SHA256" != "$TARBALL_SHA256" ]]; then
+            echo "ERROR: Archived tar checksum does not match the source tar."
+            exit 1
+        fi
+        run_with_privileges mv -- "$PARTIAL_TARBALL" "$DEST_TARBALL"
+        TARBALL_INCLUDED=true
+    else
+        echo "Not enough free space to safely archive the mirror tar under ${ARTIFACT_ROOT}."
+        echo "The tar will be omitted; its name, size, and SHA-256 will still be recorded."
+    fi
+
+    printf '%s  %s\n' "$TARBALL_SHA256" "$TARBALL_NAME" |
+      run_with_privileges tee "${ARTIFACT_DIR}/${TARBALL_NAME}.sha256" >/dev/null
+    {
+        printf 'Timestamp UTC: %s\n' "$TIMESTAMP"
+        printf 'Destination registry: docker://%s\n' "$REGISTRY"
+        printf 'ImageSetConfiguration: %s\n' "$CONFIG_NAME"
+        printf 'ImageSetConfiguration SHA-256: %s\n' "$CONFIG_SHA256"
+        printf 'Mirror tar: %s\n' "$TARBALL_NAME"
+        printf 'Mirror tar size bytes: %s\n' "$TARBALL_SIZE"
+        printf 'Mirror tar SHA-256: %s\n' "$TARBALL_SHA256"
+        printf 'Mirror tar copied to artifact bundle: %s\n' "$TARBALL_INCLUDED"
+        printf 'Cluster resources copied: %s\n' "$([[ -d "$CLUSTER_RESOURCES" ]] && echo yes || echo no)"
+        printf 'Image mapping: image-mapping.txt\n'
+    } | run_with_privileges tee "${ARTIFACT_DIR}/artifact-manifest.txt" >/dev/null
+
+    echo "Timestamped mirror artifacts saved under:"
+    echo "  ${ARTIFACT_DIR}"
 }
 
 main() {

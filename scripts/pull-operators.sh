@@ -81,7 +81,7 @@ pull_operators() {
       "$IMAGE" \
       --authfile /pull-secret.txt \
       --cache-dir /cache \
-      -c imagesets/original-isc.yml \
+      -c /imagesets/original-isc.yml \
       file://${WORKDIR}
 }
 
